@@ -1,0 +1,7 @@
+Model,Accuracy,Precision,Recall,F1-Score,AUC-ROC
+random_forest,0.5605,0.5607,0.5605,0.5601,0.5851
+xgboost,0.555,0.5551,0.555,0.5547,0.5936
+codebert_head,0.561,0.5613,0.561,0.5605,0.5879
+fuzzy_only_RF,0.5215,0.5238,0.5215,0.5098,0.517
+codebert_only,0.554,0.5541,0.554,0.5539,0.5937
+hybrid_concat_RF,0.5015,0.5025,0.5015,0.4456,0.4882

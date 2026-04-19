@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.env
+.venv
+env/
+venv/
+
+# Project Specific Data & Models
+data/
+models/
+results/*.png
+results/*.pt
+results/*.joblib
+results/*.json
+
+# IDE
+.vscode/
+.idea/
+
+# Local Reports
+project_status_report.md

@@ -71,9 +71,12 @@ class CodeDataset(Dataset):
         }
 
 def main():
-    if torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory < 6 * 1024 * 1024 * 1024:
-        print("WARNING: This script needs at least 8GB VRAM and should be run on Kaggle T4.")
-        sys.exit(1)
+    SANITY_MODE = False
+
+    # VRAM check disabled for Kaggle safety
+    # if not SANITY_MODE and torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory < 6 * 1024 * 1024 * 1024:
+    #     print("WARNING: This script needs at least 8GB VRAM and should be run on Kaggle T4.")
+    #     sys.exit(1)
 
     logger.info("="*60)
     logger.info("Phase 10: Maximum Accuracy GraphCodeBERT Fine-Tuning")
@@ -85,7 +88,9 @@ def main():
         sys.exit(1)
         
     df = pd.read_csv(df_path)
-    logger.info(f"Loaded dataset with {len(df)} samples.")
+    
+    logger.info("FULL TRAINING MODE – Using complete dataset")
+    logger.info(f"Dataset size: {len(df)} samples.")
     
     val_idx = np.load(Path(config.PROCESSED_DIR) / "val_idx.npy")
     test_idx = np.load(Path(config.PROCESSED_DIR) / "test_idx.npy")
@@ -114,7 +119,7 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=0.01)
     focal_loss_fn = FocalLoss(gamma=2.0)
     
-    epochs = 3 
+    epochs = 5
     # Calculate effective steps due to accumulation
     effective_steps_per_epoch = len(train_loader) // accumulation_steps
     num_training_steps = epochs * effective_steps_per_epoch
@@ -128,14 +133,38 @@ def main():
     logger.info(f"Starting Fine-Tuning... Device: {config.DEVICE}")
     logger.info(f"Epochs: {epochs} | Batch Size: {batch_size} (Acc: {accumulation_steps}) | Context: {max_length}")
     
-    scaler = torch.amp.GradScaler('cuda')
+    scaler = torch.amp.GradScaler()
     
     best_val_f1 = -1.0
     patience_counter = 0
     save_dir = Path(config.MODELS_DIR) / "codebert_finetuned"
     os.makedirs(save_dir, exist_ok=True)
     
-    for epoch in range(epochs):
+    start_epoch = 0
+    checkpoint_files = list(Path(config.MODELS_DIR).glob("checkpoint_epoch_*.pt"))
+    if checkpoint_files:
+        latest_ckpt = max(checkpoint_files, key=os.path.getmtime)
+        logger.info(f"Found checkpoint: {latest_ckpt}. Attempting resume...")
+        try:
+            model.load_state_dict(torch.load(latest_ckpt, map_location=config.DEVICE))
+            start_epoch_str = latest_ckpt.stem.split('_')[-1]
+            if start_epoch_str.isdigit():
+                start_epoch = int(start_epoch_str)
+                if start_epoch >= epochs:
+                    logger.info(f"Model already fully trained (epoch {start_epoch} >= {epochs}). Resetting to epoch 0.")
+                    start_epoch = 0
+                else:
+                    logger.info(f"Resuming from epoch {start_epoch}")
+            else:
+                logger.warning(f"Could not parse epoch number from {latest_ckpt.name}. Starting cleanly from 0.")
+                start_epoch = 0
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint ({e}). Starting cleanly from 0.")
+            start_epoch = 0
+    else:
+        logger.info("No checkpoint found. Starting from scratch.")
+        
+    for epoch in range(start_epoch, epochs):
         model.train()
         total_loss = 0
         optimizer.zero_grad()
@@ -194,6 +223,11 @@ def main():
         logger.info(f"Train Loss : {avg_train_loss:.4f}")
         logger.info(f"Val Acc    : {acc:.4f}")
         logger.info(f"Val F1     : {f1:.4f}\n")
+        
+        # Save per-epoch checkpoint
+        epoch_ckpt_path = Path(config.MODELS_DIR) / f"checkpoint_epoch_{epoch+1}.pt"
+        torch.save(model.state_dict(), epoch_ckpt_path)
+        logger.info(f"Saved per-epoch checkpoint: {epoch_ckpt_path}")
         
         if f1 > best_val_f1:
             best_val_f1 = f1

@@ -103,7 +103,7 @@ def main():
     
     # MAXIMUM ACCURACY UPGRADES
     max_length = 512              # Double context window
-    batch_size = 4                # Lowered physical batch size to fit 512 in 4GB VRAM
+    batch_size = 8                # Safe for Kaggle T4 16GB VRAM
     accumulation_steps = 8        # Effectively batch_size = 32
 
     train_dataset = CodeDataset(df.iloc[train_idx]["code"].tolist(), df.iloc[train_idx]["label"].tolist(), tokenizer, max_length)

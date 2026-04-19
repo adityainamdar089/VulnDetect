@@ -71,6 +71,10 @@ class CodeDataset(Dataset):
         }
 
 def main():
+    if torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory < 6 * 1024 * 1024 * 1024:
+        print("WARNING: This script needs at least 8GB VRAM and should be run on Kaggle T4.")
+        sys.exit(1)
+
     logger.info("="*60)
     logger.info("Phase 10: Maximum Accuracy GraphCodeBERT Fine-Tuning")
     logger.info("="*60)
@@ -124,7 +128,12 @@ def main():
     logger.info(f"Starting Fine-Tuning... Device: {config.DEVICE}")
     logger.info(f"Epochs: {epochs} | Batch Size: {batch_size} (Acc: {accumulation_steps}) | Context: {max_length}")
     
-    scaler = torch.cuda.amp.GradScaler() 
+    scaler = torch.amp.GradScaler('cuda')
+    
+    best_val_f1 = -1.0
+    patience_counter = 0
+    save_dir = Path(config.MODELS_DIR) / "codebert_finetuned"
+    os.makedirs(save_dir, exist_ok=True)
     
     for epoch in range(epochs):
         model.train()
@@ -138,7 +147,7 @@ def main():
             b_attn_mask = batch["attention_mask"].to(config.DEVICE)
             b_labels = batch["label"].to(config.DEVICE)
             
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 outputs = model(b_input_ids, attention_mask=b_attn_mask)
                 # Apply Focal Loss rather than standard CrossEntropy
                 loss = focal_loss_fn(outputs.logits, b_labels)
@@ -171,7 +180,7 @@ def main():
                 b_attn_mask = batch["attention_mask"].to(config.DEVICE)
                 b_labels = batch["label"].to(config.DEVICE)
                 
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     outputs = model(b_input_ids, attention_mask=b_attn_mask)
                     logits = outputs.logits
                 
@@ -186,11 +195,17 @@ def main():
         logger.info(f"Val Acc    : {acc:.4f}")
         logger.info(f"Val F1     : {f1:.4f}\n")
         
-    save_dir = Path(config.MODELS_DIR) / "codebert_finetuned"
-    os.makedirs(save_dir, exist_ok=True)
-    model.save_pretrained(save_dir)
-    tokenizer.save_pretrained(save_dir)
-    logger.info(f"Maximum Accuracy model successfully saved to {save_dir}")
+        if f1 > best_val_f1:
+            best_val_f1 = f1
+            patience_counter = 0
+            model.save_pretrained(save_dir)
+            tokenizer.save_pretrained(save_dir)
+            logger.info("New best model saved")
+        else:
+            patience_counter += 1
+            if patience_counter >= 2:
+                print("early stopping triggered")
+                break
 
 if __name__ == '__main__':
     main()

@@ -7,15 +7,16 @@ Never hardcode paths in other modules — always import from config.
 
 import os
 import torch
+from pathlib import Path
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
-BASE_DIR       = "D:/VulnDetect"
-DATA_DIR       = os.path.join(BASE_DIR, "data")
-RAW_DIR        = os.path.join(DATA_DIR, "raw")
-PROCESSED_DIR  = os.path.join(DATA_DIR, "processed")
-EMBEDDING_DIR  = os.path.join(DATA_DIR, "embeddings")
-MODELS_DIR     = os.path.join(BASE_DIR, "models")
-RESULTS_DIR    = os.path.join(BASE_DIR, "results")
+BASE_DIR       = Path(__file__).resolve().parent
+DATA_DIR       = str(BASE_DIR / "data")
+RAW_DIR        = str(BASE_DIR / "data" / "raw")
+PROCESSED_DIR  = str(BASE_DIR / "data" / "processed")
+EMBEDDING_DIR  = str(BASE_DIR / "data" / "embeddings")
+MODELS_DIR     = str(BASE_DIR / "models")
+RESULTS_DIR    = str(BASE_DIR / "results")
 
 # ─── Device ───────────────────────────────────────────────────────────────────
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -24,17 +25,17 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CODEBERT_MODEL = "microsoft/graphcodebert-base"
 
 # ─── Training Hyperparameters ──────────────────────────────────────────────────
-BATCH_SIZE    = 16
+BATCH_SIZE    = 8
 MAX_TOKEN_LEN = 512
 TEST_SPLIT    = 0.1
 VAL_SPLIT     = 0.1
 RANDOM_SEED   = 42
-NUM_EPOCHS    = 30
+NUM_EPOCHS    = 5
 LEARNING_RATE = 2e-5
 WEIGHT_DECAY  = 0.01
 
 # ─── Target CWE Types ─────────────────────────────────────────────────────────
-TARGET_CWE = ["CWE89", "CWE798", "CWE121", "CWE122", "CWE401"]
+TARGET_CWE = ["CWE89", "CWE798", "CWE121", "CWE122", "CWE401", "CWE22", "CWE78", "CWE79", "CWE476", "CWE416"]
 
 CWE_DESCRIPTIONS = {
     "CWE89":  "SQL Injection",
@@ -42,6 +43,11 @@ CWE_DESCRIPTIONS = {
     "CWE121": "Stack-based Buffer Overflow",
     "CWE122": "Heap-based Buffer Overflow",
     "CWE401": "Memory Leak",
+    "CWE22":  "Path Traversal",
+    "CWE78":  "OS Command Injection",
+    "CWE79":  "Cross-site Scripting",
+    "CWE476": "NULL Pointer Dereference",
+    "CWE416": "Use-After-Free",
 }
 
 # ─── Fusion Weights ───────────────────────────────────────────────────────────

@@ -1,82 +1,126 @@
 """
-agent_referee.py – Phase 11: LLM Agent Referee
-Takes highly-confident but potentially false-positive snippets flagged by GraphCodeBERT,
-and forces an LLM to step through them line-by-line via Chain of Thought to confirm
-if a true vulnerability exists.
+agent_referee.py – LLM Agent Referee powered by Groq (free tier).
+
+Uses llama-3.3-70b-versatile via Groq's OpenAI-compatible API to perform
+a Chain-of-Thought security analysis on flagged code snippets, reducing
+false positives from the upstream ML pipeline.
+
+Public API
+----------
+request_referee_review(code, confidence, cwe_guess) -> tuple[bool, str, float]
 """
 
 import os
-import logging
 import json
-import warnings
-
-try:
-    from openai import OpenAI
-except ImportError:
-    OpenAI = None
+import logging
+import requests
 
 logger = logging.getLogger(__name__)
 
-# Load API key from environment variable — NEVER hardcode secrets in source code
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+# ─── Groq API config ──────────────────────────────────────────────────────────
+_GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+_GROQ_MODEL   = "llama-3.3-70b-versatile"
 
-_REFEREE_PROMPT = """You are a World-Class Application Security Engineer.
+# ─── Prompts ──────────────────────────────────────────────────────────────────
+_SYSTEM_PROMPT = (
+    "You are a senior security engineer specializing in code vulnerability analysis. "
+    "Analyze the provided code snippet carefully and determine if it contains a real "
+    "security vulnerability. Be precise and avoid false positives."
+)
 
-Task:
-Analyze the provided code snippet line-by-line. Determine if there are vulnerabilities (like Memory Leaks, Buffer Overflows, SQL Injections, etc.) or if it is completely secure.
-
-Code Snippet:
-```c
+_USER_PROMPT_TEMPLATE = """\
+Code snippet to analyze:
+```
 {code}
 ```
 
-ML Baseline Confidence: {confidence}%
-Detected CWE Strategy: {cwe_guess}
+Suspected vulnerability type: {cwe_guess}
+ML model confidence: {confidence_pct:.1f}%
 
-Provide your complete analysis in JSON format *exactly* like this:
-{
-  "is_vulnerable": true/false,
-  "final_confidence": 99.5,
-  "markdown_report": "### 🛡️ AI Security Audit\\n\\n**Status:** 🔴 Vulnerable (or 🟢 Secure)\\n**Details:** Provide a detailed forensic explanation of the vulnerability or why it is safe.\\n\\n### 🛠️ Secure Code Solution\\n```c\\n// Fix goes here...\\n```"
-}
+Does this code contain a real security vulnerability?
+First explain your reasoning step by step, then conclude with either VULNERABLE or SAFE on the last line.
 """
 
-def request_referee_review(code: str, confidence: float, cwe_guess: str) -> tuple[bool, str, float]:
+
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+def request_referee_review(
+    code: str,
+    confidence: float,
+    cwe_guess: str,
+) -> tuple[bool, str, float]:
     """
-    Sends the flagged snippet to the LLM agent for review.
-    Returns: (is_vulnerable: bool, reasoning: str, final_confidence: float)
-    
-    If the API is not set up, degrades gracefully.
+    Send a flagged code snippet to the Groq LLM for Chain-of-Thought review.
+
+    Parameters
+    ----------
+    code       : Source code string to analyse.
+    confidence : ML model confidence score in [0, 1].
+    cwe_guess  : Suspected CWE type string (e.g. "CWE89").
+
+    Returns
+    -------
+    Tuple of (is_vulnerable: bool, reasoning: str, final_confidence: float).
+    Degrades gracefully when GROQ_API_KEY is absent or the API call fails.
     """
-    if not OpenAI or not OPENAI_API_KEY:
-        logger.warning("LLM Agent Referee invoked but OPENAI_API_KEY is not configured or openai package missing.")
-        return True, "API Key missing. Deferred to GraphCodeBERT's initial judgement.", confidence
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+
+    if not api_key:
+        logger.warning("GROQ_API_KEY not set — Agent Referee skipped.")
+        return True, "Agent Referee skipped — GROQ_API_KEY not set.", confidence
 
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        
-        prompt = _REFEREE_PROMPT.format(
+        user_prompt = _USER_PROMPT_TEMPLATE.format(
             code=code,
-            confidence=round(confidence * 100, 1),
-            cwe_guess=cwe_guess
+            cwe_guess=cwe_guess,
+            confidence_pct=confidence * 100,
         )
-        
-        response = client.chat.completions.create(
-            model="gpt-4o",  # or gpt-4o-mini
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.0
+
+        payload = {
+            "model": _GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user",   "content": user_prompt},
+            ],
+            "max_tokens": 500,
+            "temperature": 0.1,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type":  "application/json",
+        }
+
+        logger.info("Invoking Groq Agent Referee (model=%s) …", _GROQ_MODEL)
+        resp = requests.post(
+            _GROQ_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=30,
         )
-        
-        result_text = response.choices[0].message.content
-        data = json.loads(result_text)
-        
-        final_vuln = bool(data.get("is_vulnerable", True))
-        reasoning = str(data.get("markdown_report", "LLM provided no report."))
-        final_conf = float(data.get("final_confidence", confidence * 100)) / 100.0
-        
-        return final_vuln, reasoning, final_conf
-        
+        resp.raise_for_status()
+
+        data     = resp.json()
+        reasoning = data["choices"][0]["message"]["content"].strip()
+
+        # Parse verdict from the last non-empty line
+        last_line = ""
+        for line in reversed(reasoning.splitlines()):
+            stripped = line.strip().upper()
+            if stripped:
+                last_line = stripped
+                break
+
+        if "VULNERABLE" in last_line:
+            logger.info("Referee verdict: VULNERABLE")
+            return True, reasoning, min(confidence + 0.1, 1.0)
+        elif "SAFE" in last_line:
+            logger.info("Referee verdict: SAFE")
+            return False, reasoning, 0.2
+        else:
+            logger.warning("Referee response did not end with VULNERABLE/SAFE — keeping original prediction.")
+            return True, "Parse error — keeping original prediction.", confidence
+
     except Exception as e:
-        logger.error(f"Referee analysis failed: {e}")
-        return True, f"LLM Integration failed: {e}. Deferred to GraphCodeBERT.", confidence
+        logger.error("Referee analysis failed: %s", e)
+        return True, f"Referee error: {str(e)}", confidence

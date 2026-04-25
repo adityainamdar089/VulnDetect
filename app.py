@@ -21,6 +21,9 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import numpy as np
 import torch
 import gradio as gr
@@ -205,12 +208,12 @@ def analyze_code(code: str, language: str) -> tuple[str, str, str, str, str, str
             confidence = clf_conf
         else:
             confidence = max(fuzzy_score, 0.65)   # regex hit → at least 65% conf
-    elif clf_vulnerable is not None and clf_conf > 0.60:
+    elif clf_vulnerable is not None and clf_conf > 0.70:
         is_vulnerable = clf_vulnerable
         confidence    = clf_conf
     else:
         # Pure fuzzy fallback
-        is_vulnerable = fuzzy_score >= 0.55
+        is_vulnerable = fuzzy_score >= 0.65
         confidence    = fuzzy_score
 
     # 6. Premium SWE Agent Referee
@@ -265,7 +268,6 @@ void connect_db() {
 
 with gr.Blocks(
     title="VulnDetect – Premium Security Auditor",
-    theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="blue"),
 ) as demo:
 
     gr.Markdown(_DESCRIPTION)
@@ -328,5 +330,6 @@ if __name__ == "__main__":
         server_name="127.0.0.1",
         server_port=7860,
         share=False,
+        theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="blue"),
         show_error=True,
     )

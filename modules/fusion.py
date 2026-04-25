@@ -187,11 +187,13 @@ def fuse_features(
         )
 
     if "fuzzy_risk_score" not in df.columns:
-        raise KeyError(
-            "DataFrame is missing required column 'fuzzy_risk_score'. "
-            "Run run_fuzzy_on_dataset(df) from modules.fuzzy_module before calling fuse_features()."
+        logger.warning(
+            "DataFrame is missing 'fuzzy_risk_score' column – defaulting to 0.5 for all samples. "
+            "Run run_fuzzy_on_dataset(df) from modules.fuzzy_module for accurate results."
         )
-    fuzzy_scores = df["fuzzy_risk_score"].values
+        fuzzy_scores = np.full(n, 0.5)
+    else:
+        fuzzy_scores = df["fuzzy_risk_score"].values
     logger.info("Applying fusion strategy '%s' to %d samples …", strategy, n)
 
     fused = [fn(embeddings[i], fuzzy_scores[i]) for i in range(n)]

@@ -123,7 +123,7 @@ def main() -> None:
         cb_only = CodeBERTClassifierWrapper(input_dim=768, num_classes=num_classes)
         cb_only.model = CodeBERTClassificationHead(768, num_classes)
         cb_only.model.load_state_dict(
-            torch.load(str(cb_only_path), map_location=config.DEVICE)
+            torch.load(str(cb_only_path), map_location=config.DEVICE, weights_only=True)
         )
         cb_only.model.to(config.DEVICE)
         cb_only.model.eval()

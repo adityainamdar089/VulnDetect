@@ -181,7 +181,11 @@ def analyze_code(code: str, language: str) -> tuple[str, str, str, str, str, str
             b_attn_mask = enc["attention_mask"].to(config.DEVICE)
             
             with torch.no_grad():
-                with torch.amp.autocast('cuda'):
+                if config.DEVICE == "cuda":
+                    with torch.amp.autocast('cuda'):
+                        outputs = _finetuned_model(b_input_ids, attention_mask=b_attn_mask)
+                        probs = torch.softmax(outputs.logits, dim=1)[0].cpu().numpy()
+                else:
                     outputs = _finetuned_model(b_input_ids, attention_mask=b_attn_mask)
                     probs = torch.softmax(outputs.logits, dim=1)[0].cpu().numpy()
             

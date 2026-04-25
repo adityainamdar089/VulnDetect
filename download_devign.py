@@ -50,7 +50,7 @@ def download_and_convert():
     except ImportError:
         logger.error(
             "The 'datasets' library is not installed.\n"
-            "Run: D:\\pytorch_env\\Scripts\\pip install datasets"
+            "Run: pip install datasets"
         )
         sys.exit(1)
 

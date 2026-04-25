@@ -68,6 +68,33 @@ _VULN_TEMPLATES = {
         'process(mem); '
         '/* free() missing */ }}'
     ),
+    "CWE22": (
+        'void read_file(char *filename) {{ '
+        'char path[256]; '
+        'sprintf(path, "/var/data/%s", filename); '
+        'FILE *f = fopen(path, "r"); }}'
+    ),
+    "CWE78": (
+        'void run_cmd(char *arg) {{ '
+        'char cmd[256]; '
+        'sprintf(cmd, "ls %s", arg); '
+        'system(cmd); }}'
+    ),
+    "CWE79": (
+        'void render(char *user_input) {{ '
+        'printf("<p>%s</p>", user_input); }}'
+    ),
+    "CWE476": (
+        'void process(int *ptr) {{ '
+        'int val = *ptr; '
+        'use(val); }}'
+    ),
+    "CWE416": (
+        'void use_after_free() {{ '
+        'char *p = (char*)malloc(64); '
+        'free(p); '
+        'strcpy(p, "hello"); }}'
+    ),
 }
 
 _SAFE_TEMPLATES = {
@@ -101,6 +128,36 @@ _SAFE_TEMPLATES = {
         'void run() {{ '
         'char *mem = (char*)malloc(1024); '
         'if (mem) {{ process(mem); free(mem); }} }}'
+    ),
+    "CWE22": (
+        'void read_file(char *filename) {{ '
+        'if (strstr(filename, "..")) {{ return; }} '
+        'char path[256]; '
+        'snprintf(path, sizeof(path), "/var/data/%s", filename); '
+        'FILE *f = fopen(path, "r"); }}'
+    ),
+    "CWE78": (
+        'void run_cmd(char *arg) {{ '
+        'if (!validate_arg(arg)) return; '
+        'char *argv[] = {{"/bin/ls", arg, NULL}}; '
+        'execv("/bin/ls", argv); }}'
+    ),
+    "CWE79": (
+        'void render(char *user_input) {{ '
+        'char *escaped = html_escape(user_input); '
+        'printf("<p>%s</p>", escaped); '
+        'free(escaped); }}'
+    ),
+    "CWE476": (
+        'void process(int *ptr) {{ '
+        'if (!ptr) return; '
+        'int val = *ptr; '
+        'use(val); }}'
+    ),
+    "CWE416": (
+        'void safe_use() {{ '
+        'char *p = (char*)malloc(64); '
+        'if (p) {{ strcpy(p, "hello"); free(p); }} }}'
     ),
 }
 

@@ -133,7 +133,7 @@ def main():
     logger.info(f"Starting Fine-Tuning... Device: {config.DEVICE}")
     logger.info(f"Epochs: {epochs} | Batch Size: {batch_size} (Acc: {accumulation_steps}) | Context: {max_length}")
     
-    scaler = torch.amp.GradScaler()
+    scaler = torch.amp.GradScaler("cuda")
     
     best_val_f1 = -1.0
     patience_counter = 0

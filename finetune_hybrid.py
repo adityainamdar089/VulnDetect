@@ -96,7 +96,7 @@ class FusionDataset(Dataset):
         }
 
 def main():
-    SANITY_MODE = True
+    SANITY_MODE = False
     
     logger.info("="*60)
     logger.info("Hybrid FusionClassifier Training")
@@ -160,7 +160,7 @@ def main():
             for batch in tqdm(prep_loader, desc="Extracting embeddings"):
                 b_input_ids = batch["input_ids"].to(config.DEVICE)
                 b_attn_mask = batch["attention_mask"].to(config.DEVICE)
-                b_fuzzy = batch["fuzzy_features"].numpy()
+                b_fuzzy = batch["fuzzy_features"].cpu().numpy()
                 
                 outputs = extractor_model(b_input_ids, attention_mask=b_attn_mask)
                 cls_embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()

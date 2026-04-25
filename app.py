@@ -181,7 +181,7 @@ def analyze_code(code: str, language: str) -> tuple[str, str, str, str, str, str
             b_attn_mask = enc["attention_mask"].to(config.DEVICE)
             
             with torch.no_grad():
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     outputs = _finetuned_model(b_input_ids, attention_mask=b_attn_mask)
                     probs = torch.softmax(outputs.logits, dim=1)[0].cpu().numpy()
             
@@ -209,17 +209,13 @@ def analyze_code(code: str, language: str) -> tuple[str, str, str, str, str, str
         is_vulnerable = fuzzy_score >= 0.55
         confidence    = fuzzy_score
 
-    # 6. SWE Agent Referee (The 90%+ Tier)
-    # If the system flagged it as vulnerable, let the LLM do a deep-dive verification.
-    llm_reason_str = "Agent Referee bypassed (Code determined strictly safe by GraphCodeBERT)."
-    
-    if is_vulnerable and confidence > 0.50:
-        logger.info("Code highly suspicious. Invoking Agent Referee...")
-        ref_vuln, reason, ref_conf = request_referee_review(code, confidence, cwe)
-        # The Referee gets the absolute final say.
-        is_vulnerable = ref_vuln
-        confidence = max(confidence, ref_conf) # Take the higher confidence
-        llm_reason_str = reason
+    # 6. Premium SWE Agent Referee
+    # Always invoke the AI Referee for the premium experience
+    logger.info("Invoking Premium Agent Referee...")
+    ref_vuln, reason, ref_conf = request_referee_review(code, confidence, cwe)
+    is_vulnerable = ref_vuln
+    confidence = max(confidence, ref_conf) # Take the higher confidence
+    llm_reason_str = reason
         
     # 7. CWE label
     if not is_vulnerable:
@@ -243,9 +239,9 @@ def analyze_code(code: str, language: str) -> tuple[str, str, str, str, str, str
 # ─── Gradio UI ────────────────────────────────────────────────────────────────
 
 _DESCRIPTION = """
-# 🔐 Hybrid Fuzzy-Transformer Vulnerability Detector
+# 🛡️ Premium AI Security Auditor
 Paste any C / C++ / Java code snippet and click **Analyze** to detect
-security vulnerabilities using a hybrid fuzzy + CodeBERT model.
+security vulnerabilities. Powered by GraphCodeBERT & GPT-4 Security Agent.
 """
 
 _EXAMPLE_VULN = """\
@@ -264,7 +260,8 @@ void connect_db() {
 }"""
 
 with gr.Blocks(
-    title="VulnDetect – Hybrid Fuzzy-Transformer Vulnerability Detector",
+    title="VulnDetect – Premium Security Auditor",
+    theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="blue"),
 ) as demo:
 
     gr.Markdown(_DESCRIPTION)
@@ -296,7 +293,7 @@ with gr.Blocks(
             out_lines      = gr.Textbox(label="Affected Lines",     interactive=False, elem_id="out_lines")
             
     with gr.Row():
-        out_reasoning = gr.Textbox(label="🤖 Agent Referee Reasoning (LLM)", lines=4, interactive=False, elem_id="out_reasoning")
+        out_reasoning = gr.Markdown("### 🤖 Premium AI Security Audit\nWaiting for analysis...", elem_id="out_reasoning")
 
     with gr.Row():
         gr.Examples(
@@ -312,7 +309,7 @@ with gr.Blocks(
     )
 
     clear_btn.click(
-        fn=lambda: ("", "C", "—", "—", "—", "—", "—", "—"),
+        fn=lambda: ("", "C", "—", "—", "—", "—", "—", "### 🤖 Premium AI Security Audit\nWaiting for analysis..."),
         inputs=[],
         outputs=[
             code_input, language_sel,

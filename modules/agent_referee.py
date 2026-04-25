@@ -8,6 +8,7 @@ if a true vulnerability exists.
 import os
 import logging
 import json
+import warnings
 
 try:
     from openai import OpenAI
@@ -16,32 +17,27 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Try to load API key from environment
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Load API key from environment variable — NEVER hardcode secrets in source code
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
-_REFEREE_PROMPT = """You are an Expert Application Security Engineer.
-Our initial ML tool (GraphCodeBERT) has flagged the following C/C++ function as potentially containing a vulnerability.
+_REFEREE_PROMPT = """You are a World-Class Application Security Engineer.
 
 Task:
-Analyze this snippet line-by-line. Determine if the ML model is hallucinating (False Positive) or if there is a true vulnerability (True Positive).
-Look out specifically for:
-- Memory Leaks (malloc without free)
-- Buffer Overflows (strcpy over boundaries limits)
-- Resource Leaks
+Analyze the provided code snippet line-by-line. Determine if there are vulnerabilities (like Memory Leaks, Buffer Overflows, SQL Injections, etc.) or if it is completely secure.
 
 Code Snippet:
 ```c
 {code}
 ```
 
-GraphCodeBERT Confidence: {confidence}%
+ML Baseline Confidence: {confidence}%
 Detected CWE Strategy: {cwe_guess}
 
-Provide your analysis in JSON format *exactly* like this:
+Provide your complete analysis in JSON format *exactly* like this:
 {
-  "reasoning": "First, I see the pointer initialized on line X...",
   "is_vulnerable": true/false,
-  "final_confidence": 99.5
+  "final_confidence": 99.5,
+  "markdown_report": "### 🛡️ AI Security Audit\\n\\n**Status:** 🔴 Vulnerable (or 🟢 Secure)\\n**Details:** Provide a detailed forensic explanation of the vulnerability or why it is safe.\\n\\n### 🛠️ Secure Code Solution\\n```c\\n// Fix goes here...\\n```"
 }
 """
 
@@ -76,7 +72,7 @@ def request_referee_review(code: str, confidence: float, cwe_guess: str) -> tupl
         data = json.loads(result_text)
         
         final_vuln = bool(data.get("is_vulnerable", True))
-        reasoning = str(data.get("reasoning", "LLM provided no reasoning."))
+        reasoning = str(data.get("markdown_report", "LLM provided no report."))
         final_conf = float(data.get("final_confidence", confidence * 100)) / 100.0
         
         return final_vuln, reasoning, final_conf

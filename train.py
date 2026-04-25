@@ -138,7 +138,7 @@ def main() -> None:
     train_all(X_train, y_train)
 
     # ── Ablation baselines ────────────────────────────────────────────────────
-    # Fuzzy-only: 6-dim vector (5 features + fuzzy risk score)
+    # Fuzzy-only: 6-dim vector (5 AST features + fuzzy risk score)
     feature_cols = [
         "input_validation_score",
         "sensitive_data_exposure",
@@ -147,6 +147,14 @@ def main() -> None:
         "control_flow_complexity",
         "fuzzy_risk_score",
     ]
+    missing_cols = [c for c in feature_cols if c not in df.columns]
+    if missing_cols:
+        logger.error(
+            "Missing fuzzy feature columns in dataset: %s\n"
+            "Run data_prep.py or download_devign.py first to generate these columns.",
+            missing_cols,
+        )
+        sys.exit(1)
     X_fuzzy = df[feature_cols].values
     np.save(str(proc_dir / "X_fuzzy.npy"), X_fuzzy)
 

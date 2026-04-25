@@ -186,6 +186,11 @@ def fuse_features(
             "Choose from: concat, weighted, attention."
         )
 
+    if "fuzzy_risk_score" not in df.columns:
+        raise KeyError(
+            "DataFrame is missing required column 'fuzzy_risk_score'. "
+            "Run run_fuzzy_on_dataset(df) from modules.fuzzy_module before calling fuse_features()."
+        )
     fuzzy_scores = df["fuzzy_risk_score"].values
     logger.info("Applying fusion strategy '%s' to %d samples …", strategy, n)
 

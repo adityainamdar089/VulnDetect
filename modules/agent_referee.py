@@ -27,8 +27,8 @@ _SYSTEM_PROMPT = (
     "Analyze the provided code snippet carefully and determine if it contains a real, "
     "exploitable security vulnerability. Ignore pedantic best-practice issues, such as "
     "unclosed streams or missing null checks, unless they lead to a direct security compromise. "
-    "Focus primarily on vulnerabilities like Injection, Buffer Overflows, Memory Corruption, "
-    "and Use-After-Free. Be precise and explicitly avoid false positives."
+    "Focus primarily on vulnerabilities like SQL/OS Injection, Buffer Overflows, Memory Corruption, "
+    "Use-After-Free, Path Traversal, and Hardcoded Credentials. Be precise and explicitly avoid false positives."
 )
 
 _USER_PROMPT_TEMPLATE = """\
@@ -37,11 +37,16 @@ Code snippet to analyze:
 {code}
 ```
 
-Suspected vulnerability type: {cwe_guess}
+The static analysis pipeline suspects the code may contain MULTIPLE vulnerability types: {cwe_guess}
 ML model confidence: {confidence_pct:.1f}%
 
-Does this code contain a real security vulnerability?
-First explain your reasoning step by step, then conclude with either VULNERABLE or SAFE on the last line.
+For each suspected vulnerability type listed above:
+1. Determine if it is actually present and exploitable in this specific code.
+2. Explain your reasoning concisely.
+
+Finally, provide a consolidated verdict:
+- List only the CONFIRMED vulnerabilities (if any).
+- Conclude with either VULNERABLE or SAFE on the very last line.
 """
 
 
@@ -85,7 +90,7 @@ def request_referee_review(
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user",   "content": user_prompt},
             ],
-            "max_tokens": 500,
+            "max_tokens": 1024,
             "temperature": 0.1,
         }
 
@@ -121,8 +126,17 @@ def request_referee_review(
             logger.info("Referee verdict: SAFE")
             return False, reasoning, 0.2
         else:
-            logger.warning("Referee response did not end with VULNERABLE/SAFE — keeping original prediction.")
-            return True, "Parse error — keeping original prediction.", confidence
+            # Fallback: check the entire reasoning text
+            upper_text = reasoning.upper()
+            if "SAFE" in upper_text and "VULNERABLE" not in upper_text:
+                logger.info("Referee verdict (fallback): SAFE")
+                return False, reasoning, 0.2
+            elif "VULNERABLE" in upper_text:
+                logger.info("Referee verdict (fallback): VULNERABLE")
+                return True, reasoning, min(confidence + 0.1, 1.0)
+                
+            logger.warning("Referee response did not contain VULNERABLE/SAFE — keeping original prediction.")
+            return True, reasoning, confidence
 
     except Exception as e:
         logger.error("Referee analysis failed: %s", e)

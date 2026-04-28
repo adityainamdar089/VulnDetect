@@ -131,9 +131,18 @@ _CWE_PATTERNS = {
                r"\bstrcat\s*\([^,]+,\s*[^,)]+\)"],
     # Heap overflow – memcpy with size > allocation
     "CWE122": [r"memcpy\s*\([^,]+,[^,]+,\s*\d{3,}\)",
-               r"\bcalloc\s*\(\s*0\s*,"],
+               r"\bcalloc\s*\(\s*0\s*,",
+               r"memcpy\s*\([^,]+,[^,]+,\s*strlen\s*\(",
+               r"memcpy\s*\([^,]+,[^,]+,\s*sizeof\s*\("],
     # Memory leak – malloc/new present but NO matching free/delete in snippet
-    "CWE401": [r"\bmalloc\s*\(", r"\bnew\s+\w+"],
+    "CWE401": [r"\bmalloc\s*\(", r"\bnew\s+\w+",
+               r"new\s+\w+\[",
+               r"\bnew\s+\w+\s*\(",
+               r"~\w+\s*\(\s*\)\s*\{[^}]*\}"],
+    # Use After Free
+    "CWE416": [r"\bdelete\s+\w+",
+               r"\bdelete\[\]\s+\w+",
+               r"free\s*\(\s*\w+\s*\)"],
     # Path Traversal
     "CWE22":  [r"File\s*\([^)]*\+\s*[a-zA-Z0-9_]+\)", r"\.\./", r"open\s*\([^)]*\+\s*[a-zA-Z0-9_]+\)"],
     # OS Command Injection
@@ -164,6 +173,22 @@ def _detect_all_cwes(code: str) -> list:
             if re.search(r"\bfree\s*\(", code, re.IGNORECASE) or \
                re.search(r"\bdelete\b", code, re.IGNORECASE):
                 hits = 0
+        if cwe == "CWE416" and hits > 0:
+            uaf_found = False
+            lines = code.splitlines()
+            for i, line in enumerate(lines):
+                m = re.search(r'\b(?:delete(?:\[\])?\s+|free\s*\(\s*)([a-zA-Z_]\w*)', line)
+                if m:
+                    ptr = m.group(1)
+                    for j in range(i+1, len(lines)):
+                        if re.search(rf'\b{ptr}\b', lines[j]) and not re.search(rf'\b{ptr}\s*=', lines[j]):
+                            uaf_found = True
+                            break
+                if uaf_found:
+                    break
+            if not uaf_found:
+                hits = 0
+                
         if hits > 0:
             found.append(cwe)
     return found
@@ -174,6 +199,18 @@ def _detect_affected_lines(code: str, cwe: str) -> str:
     lines      = code.splitlines()
     patterns   = _CWE_PATTERNS.get(cwe, [])
     hit_lines  = []
+    
+    if cwe == "CWE416":
+        for i, line in enumerate(lines):
+            m = re.search(r'\b(?:delete(?:\[\])?\s+|free\s*\(\s*)([a-zA-Z_]\w*)', line)
+            if m:
+                ptr = m.group(1)
+                for j in range(i+1, len(lines)):
+                    if re.search(rf'\b{ptr}\b', lines[j]) and not re.search(rf'\b{ptr}\s*=', lines[j]):
+                        hit_lines.append(str(j+1))
+                        break
+        return ", ".join(hit_lines) if hit_lines else "N/A"
+
     for lineno, line in enumerate(lines, start=1):
         for p in patterns:
             if re.search(p, line, re.IGNORECASE):
@@ -313,133 +350,172 @@ _CUSTOM_CSS = """
 html, body { height: 100%; }
 
 body, .gradio-container, .gradio-container > .main {
-    background: #000000 !important;
+    background: #09090b !important;
+    background-image: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.15), transparent 50%), radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.1), transparent 50%) !important;
     font-family: 'Inter', system-ui, sans-serif !important;
-    color: #ededed !important;
+    color: #e4e4e7 !important;
 }
 
 .gradio-container { max-width: 1400px !important; padding: 40px 20px !important; }
 
 /* HERO */
 #hero-section {
-    background: linear-gradient(180deg, #0a0a0a 0%, #000000 100%);
-    border: 1px solid #262626;
-    border-radius: 12px;
+    background: rgba(24, 24, 27, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(63, 63, 70, 0.5);
+    border-radius: 16px;
     padding: 32px 40px;
     margin-bottom: 32px;
     text-align: center;
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 #hero-section h1 { 
-    font-size: 2.2rem !important; 
-    font-weight: 700 !important; 
+    font-size: 2.5rem !important; 
+    font-weight: 800 !important; 
     letter-spacing: -0.04em !important;
-    background: linear-gradient(to right, #ffffff, #a3a3a3);
+    background: linear-gradient(to right, #60a5fa, #c084fc, #f472b6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 12px !important; 
 }
-#hero-section p { color: #a3a3a3 !important; font-size: 1rem !important; margin-bottom: 24px !important; }
+#hero-section p { color: #e4e4e7 !important; font-size: 1.1rem !important; margin-bottom: 24px !important; font-weight: 500 !important; }
 
 .badge-row { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
 .badge {
-    display: inline-flex; align-items: center; padding: 6px 14px;
-    border-radius: 9999px; font-size: 12px; font-weight: 500; letter-spacing: 0.02em;
+    display: inline-flex; align-items: center; padding: 6px 16px;
+    border-radius: 9999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
-.badge-blue  { background: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); }
-.badge-green { background: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.2); }
-.badge-amber { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.2); }
+.badge-blue  { background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.1)); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
+.badge-green { background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.1)); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+.badge-amber { background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.1)); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
 
 /* CARDS */
 .card {
-    background: #0a0a0a !important;
-    border: 1px solid #262626 !important;
-    border-radius: 12px !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
-    transition: border-color 0.3s ease;
+    background: rgba(24, 24, 27, 0.8) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(63, 63, 70, 0.5) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.02) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
-.card:hover { border-color: #404040 !important; }
+.card:hover { 
+    border-color: rgba(99, 102, 241, 0.5) !important; 
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 20px rgba(99, 102, 241, 0.15) !important; 
+}
 
 /* CODE EDITOR */
-#code_input > .label-wrap { padding: 16px 20px 8px !important; border-bottom: 1px solid #262626 !important; }
+#code_input > .label-wrap { padding: 16px 20px 8px !important; border-bottom: 1px solid rgba(63, 63, 70, 0.5) !important; }
 #code_input textarea, #code_input .cm-editor {
-    background: #000000 !important;
+    background: #09090b !important;
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 14px !important;
     line-height: 1.6 !important;
-    color: #ededed !important;
+    color: #e4e4e7 !important;
     border: none !important;
-    border-radius: 0 0 12px 12px !important;
+    border-radius: 0 0 16px 16px !important;
     min-height: 450px !important;
 }
-#code_input .cm-gutters { background: #000000 !important; border-right: 1px solid #262626 !important; color: #525252 !important; }
+#code_input .cm-gutters { background: #09090b !important; border-right: 1px solid rgba(63, 63, 70, 0.3) !important; color: #52525b !important; }
 
 /* BUTTONS */
 #analyze_btn {
-    background: #ededed !important;
-    border: none !important;
-    border-radius: 8px !important;
-    color: #000000 !important;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 10px !important;
+    color: #ffffff !important;
     font-weight: 600 !important;
     font-size: 15px !important;
     padding: 12px 24px !important;
-    transition: transform 0.2s ease, opacity 0.2s ease !important;
+    box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4) !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
-#analyze_btn:hover { opacity: 0.9 !important; transform: scale(1.02) !important; }
+#analyze_btn:hover { 
+    box-shadow: 0 6px 20px rgba(79, 70, 229, 0.6) !important; 
+    transform: translateY(-2px) !important; 
+    filter: brightness(1.1) !important;
+}
 
 #clear_btn {
-    background: transparent !important;
-    border: 1px solid #262626 !important;
-    border-radius: 8px !important;
-    color: #a3a3a3 !important;
-    font-weight: 500 !important;
+    background: rgba(39, 39, 42, 0.8) !important;
+    border: 1px solid rgba(99, 102, 241, 0.4) !important;
+    border-radius: 10px !important;
+    color: #f4f4f5 !important;
+    font-weight: 600 !important;
     transition: all 0.2s ease !important;
 }
-#clear_btn:hover { background: #171717 !important; color: #ededed !important; }
+#clear_btn:hover { background: rgba(99, 102, 241, 0.8) !important; color: #ffffff !important; }
 
 /* TEXTBOXES */
 .results-header {
-    padding: 16px 24px; border-bottom: 1px solid #262626;
-    font-size: 13px; font-weight: 600; color: #ededed; text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 16px 24px; border-bottom: 1px solid rgba(63, 63, 70, 0.5);
+    font-size: 14px; font-weight: 700; color: #f4f4f5; text-transform: uppercase; letter-spacing: 0.1em;
+    background: linear-gradient(to right, rgba(99, 102, 241, 0.1), transparent);
+    border-radius: 16px 16px 0 0;
 }
 #out_vulnerable textarea, #out_type textarea, #out_severity textarea, #out_risk_score textarea, #out_confidence textarea, #out_lines textarea, #out_syntax textarea {
-    background: #000000 !important;
-    border: 1px solid #262626 !important;
-    border-radius: 6px !important;
-    color: #ededed !important;
+    background: #09090b !important;
+    border: 1px solid rgba(63, 63, 70, 0.5) !important;
+    border-radius: 8px !important;
+    color: #ffffff !important;
     font-family: 'Inter', sans-serif !important;
     font-size: 15px !important;
-    font-weight: 500 !important;
+    font-weight: 600 !important;
     padding: 12px 16px !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2) !important;
 }
 
 /* AI REPORT */
 #out_reasoning {
-    background: #0a0a0a !important;
-    border: 1px solid #262626 !important;
-    border-radius: 12px !important;
+    background: rgba(24, 24, 27, 0.95) !important;
+    border: 1px solid rgba(99, 102, 241, 0.5) !important;
+    border-radius: 16px !important;
     padding: 32px 40px !important;
     font-size: 15px !important;
-    line-height: 1.7 !important;
-    color: #a3a3a3 !important;
+    line-height: 1.8 !important;
+    color: #ffffff !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05) !important;
 }
-#out_reasoning h3 { color: #ededed !important; font-size: 18px !important; margin-bottom: 16px !important; padding-bottom: 12px !important; border-bottom: 1px solid #262626 !important; }
-#out_reasoning strong { color: #ffffff !important; }
-#out_reasoning code { background: #171717 !important; border: 1px solid #262626 !important; padding: 2px 6px !important; border-radius: 6px !important; color: #60a5fa !important; font-family: 'JetBrains Mono', monospace !important; font-size: 13px !important; }
-#out_reasoning blockquote { border-left: 3px solid #525252 !important; padding-left: 20px !important; color: #737373 !important; font-style: italic !important; margin: 16px 0 !important; }
+#out_reasoning h3 { 
+    color: #ffffff !important; 
+    font-size: 18px !important; 
+    margin-bottom: 20px !important; 
+    padding-bottom: 16px !important; 
+    border-bottom: 1px solid rgba(99, 102, 241, 0.4) !important;
+    display: flex; align-items: center; gap: 10px;
+}
+#out_reasoning strong { color: #60a5fa !important; }
+#out_reasoning code { 
+    background: rgba(0, 0, 0, 0.8) !important; 
+    border: 1px solid rgba(99, 102, 241, 0.4) !important; 
+    padding: 2px 6px !important; 
+    border-radius: 6px !important; 
+    color: #93c5fd !important; 
+    font-family: 'JetBrains Mono', monospace !important; 
+    font-size: 13px !important; 
+}
+#out_reasoning blockquote { 
+    border-left: 4px solid #6366f1 !important; 
+    background: rgba(99, 102, 241, 0.1) !important;
+    padding: 16px 20px !important; 
+    border-radius: 0 8px 8px 0 !important;
+    color: #e4e4e7 !important; 
+    font-style: italic !important; 
+    margin: 20px 0 !important; 
+}
 
 /* LABELS */
 .gradio-container label, .gradio-container .label-wrap span {
-    color: #737373 !important; font-size: 12px !important; font-weight: 500 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important;
+    color: #e4e4e7 !important; font-size: 12px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: 0.08em !important;
 }
 
 /* EXAMPLES TABLE */
-.examples-holder, .examples table { background: #0a0a0a !important; border: 1px solid #262626 !important; border-radius: 12px !important; }
-.examples-holder thead th { background: #000000 !important; color: #a3a3a3 !important; border-bottom: 1px solid #262626 !important; font-weight: 500 !important; }
-.examples-holder tbody tr { border-bottom: 1px solid #262626 !important; transition: background 0.2s ease !important; }
-.examples-holder tbody tr:hover { background: #171717 !important; }
-.examples-holder tbody td { color: #a3a3a3 !important; font-family: 'JetBrains Mono', monospace !important; font-size: 13px !important; padding: 12px 16px !important; }
-.examples > .label-wrap { background: #0a0a0a !important; border: 1px solid #262626 !important; border-radius: 8px !important; margin-bottom: 8px !important; padding: 12px 16px !important; }
+.examples-holder, .examples table { background: rgba(24, 24, 27, 0.6) !important; border: 1px solid rgba(63, 63, 70, 0.5) !important; border-radius: 12px !important; }
+.examples-holder thead th { background: #000000 !important; color: #ffffff !important; border-bottom: 1px solid rgba(63, 63, 70, 0.5) !important; font-weight: 700 !important; }
+.examples-holder tbody tr { border-bottom: 1px solid rgba(63, 63, 70, 0.3) !important; transition: all 0.2s ease !important; }
+.examples-holder tbody tr:hover { background: rgba(99, 102, 241, 0.1) !important; cursor: pointer !important; }
+.examples-holder tbody td { color: #d4d4d8 !important; font-family: 'JetBrains Mono', monospace !important; font-size: 13px !important; padding: 14px 16px !important; }
+.examples > .label-wrap { background: transparent !important; border: none !important; margin-bottom: 8px !important; padding: 0 4px !important; }
 
 /* BLOCK OVERRIDES */
 .gradio-container .block, .gradio-container .form, .gradio-container fieldset { background: transparent !important; border: none !important; box-shadow: none !important; }
@@ -490,26 +566,26 @@ void copyInput(char *src) {
 }"""
 
 _THEME = gr.themes.Base(
-    primary_hue="zinc",
-    secondary_hue="zinc",
-    neutral_hue="zinc",
+    primary_hue="indigo",
+    secondary_hue="blue",
+    neutral_hue="slate",
     font=gr.themes.GoogleFont("Inter"),
     font_mono=gr.themes.GoogleFont("JetBrains Mono"),
 ).set(
-    body_background_fill="#000000",
-    body_text_color="#ededed",
+    body_background_fill="#09090b",
+    body_text_color="#e4e4e7",
     block_background_fill="transparent",
     block_border_width="0px",
-    block_label_text_color="#737373",
+    block_label_text_color="#a1a1aa",
     block_label_text_size="12px",
-    input_background_fill="#000000",
-    input_border_color="#262626",
+    input_background_fill="#09090b",
+    input_border_color="rgba(63, 63, 70, 0.5)",
     input_border_width="1px",
-    button_primary_background_fill="#ededed",
-    button_primary_text_color="#000000",
-    button_secondary_background_fill="#000000",
-    button_secondary_text_color="#ededed",
-    button_secondary_border_color="#262626",
+    button_primary_background_fill="#4f46e5",
+    button_primary_text_color="#ffffff",
+    button_secondary_background_fill="rgba(39, 39, 42, 0.5)",
+    button_secondary_text_color="#e4e4e7",
+    button_secondary_border_color="rgba(63, 63, 70, 0.5)",
 )
 
 with gr.Blocks(title="VulnDetect – AI Security Auditor") as demo:
@@ -639,7 +715,19 @@ with gr.Blocks(title="VulnDetect – AI Security Auditor") as demo:
 
     def _handle_analyze(code, lang):
         is_ok, syn_msg = check_syntax(code)
-        results = analyze_code(code, lang)
+        
+        if not is_ok:
+            results = (
+                "❌ Error",
+                "N/A",
+                "⚪ N/A",
+                "0.0/100",
+                "0.0%",
+                "N/A",
+                "**Pipeline Halted:** The code contains syntax errors. Please fix the syntax before running the security analysis to avoid false positives and wasted API calls."
+            )
+        else:
+            results = analyze_code(code, lang)
         
         if code.strip():
             pdf_path = generate_pdf_report(code, lang, syn_msg, *results)

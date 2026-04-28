@@ -70,6 +70,34 @@ def credential_exposure_score(code: str, language: str) -> float:
     matches = len(re.findall(r"(password|passwd|secret|api_key|token|apikey)\s*=\s*[\"'][^\"']{4,}[\"']", code, re.IGNORECASE))
     return float(min(matches / 3.0, 1.0))
 
+def destructor_safety_score(code: str, language: str) -> float:
+    lang = language.lower()
+    if "c++" not in lang and "cpp" not in lang:
+        return 0.1
+        
+    allocs = len(re.findall(r"\bnew\b", code))
+    deallocs = 0
+    
+    destructor_pattern = re.search(r"~\w+\s*\([^)]*\)\s*\{([^}]+)\}", code, re.DOTALL)
+    if destructor_pattern:
+        destructor_body = destructor_pattern.group(1)
+        deallocs += len(re.findall(r"\bdelete\b", destructor_body))
+        
+    return float(max(min((allocs - deallocs) / (allocs + 1.0), 1.0), 0.0))
+
+def pointer_lifetime_score(code: str, language: str) -> float:
+    violations = 0
+    lines = code.split('\n')
+    for i, line in enumerate(lines):
+        m = re.search(r'\b(?:delete(?:\[\])?\s+|free\s*\(\s*)([a-zA-Z_]\w*)', line)
+        if m:
+            ptr = m.group(1)
+            for j in range(i+1, min(i+10, len(lines))):
+                if re.search(rf'\b{ptr}\b', lines[j]) and not re.search(rf'\b{ptr}\s*=', lines[j]):
+                    violations += 1
+                    break
+    return float(min(violations / 3.0, 1.0))
+
 def extract_security_features(code: str, language: str) -> dict:
     return {
         "taint_depth_score": taint_depth_score(code, language),
@@ -77,7 +105,9 @@ def extract_security_features(code: str, language: str) -> dict:
         "allocation_safety_score": allocation_safety_score(code, language),
         "control_flow_danger_score": control_flow_danger_score(code, language),
         "injection_surface_score": injection_surface_score(code, language),
-        "credential_exposure_score": credential_exposure_score(code, language)
+        "credential_exposure_score": credential_exposure_score(code, language),
+        "destructor_safety_score": destructor_safety_score(code, language),
+        "pointer_lifetime_score": pointer_lifetime_score(code, language)
     }
 
 SECURITY_FEATURE_COLS = [
@@ -86,5 +116,7 @@ SECURITY_FEATURE_COLS = [
     "allocation_safety_score", 
     "control_flow_danger_score", 
     "injection_surface_score", 
-    "credential_exposure_score"
+    "credential_exposure_score",
+    "destructor_safety_score",
+    "pointer_lifetime_score"
 ]
